@@ -208,14 +208,11 @@ class DepleteReactor(Facility):
         then the fuel is discharged. If it's after a cycle ends, then
         fuel is loaded
         '''
-        print(f"[TICK] time={self.context.time} | cycle_step={self.cycle_step} | core_count={self.core.count} | discharched={self.discharged}")
         if self.retired():
             if self.context.time == self.exit_time + 1:
-                print("[TICK] Prototype retired, transmuting fuel...")
                 self.transmute()
 
             while self.core.count > 0:
-                print(f"[TICK] Retired: discharging. core_count={self.core.count}")
                 if self.discharge() == False:
                     break
             while (
@@ -224,19 +221,15 @@ class DepleteReactor(Facility):
                 self.spent_fuel.push(self.fresh_fuel.pop())
 
             if self.check_decommission_condition():
-                print("[TICK] Decommissioning...")
                 self.decommission()
 
         if self.cycle_step == self.cycle_time:
-            print("[TICK] End of Cycle, transmuting fuel...")
             self.transmute()
 
         if (self.cycle_step >= self.cycle_time) and (self.discharged == False):
-            print("[TICK] Discharging spent fuel...")
             self.discharged = self.discharge()
 
         if self.cycle_step >= self.cycle_time:
-            print("[TICK] Loading fresh fuel..")
             self.load()
         return
 
@@ -262,7 +255,6 @@ class DepleteReactor(Facility):
         If it's in the middle of a cycle or the core is full, then
         the cycle duration counter increases by one.
         '''
-        print(f"[TOCK] time={self.context.time} | cycle_step={self.cycle_step} | core_count={self.core.count} | discharged={self.discharged}")
         if self.retired():
             return
 
@@ -271,7 +263,6 @@ class DepleteReactor(Facility):
             self.refuel_time) and (
             self.core.count == self.n_assem_core) and (
                 self.discharged):
-            print("[TOCK] Refuel completed, starting new cycle...")
             self.discharged = False
             self.cycle_step = 0
 
@@ -295,8 +286,6 @@ class DepleteReactor(Facility):
         Establish the openmc.deplete.MicroXS and openmc.Materials
         objects for use in simulation.
         '''
-        print(f"[ENTER_NOTIFY] reading materials from: {self.model_path} + materials.xml")
-        print(f"[ENTER_NOTIFY] reading micro_xs from : {self.model_path} + micro_xs.csv")
         super().enter_notify()
         if len(self.fuel_prefs) == 0:
             self.fuel_prefs = [1] * len(self.fuel_incommods)
@@ -579,11 +568,8 @@ class DepleteReactor(Facility):
         --------
         Bool: True if fuel is discharged, false if fuel is not discharged.
         '''
-        print(f"[DISCHARGE] core_count={self.core.count} | spent_fuel_count={self.spent_fuel.count}")
         npop = min(self.n_assem_batch, self.core.count)
-        print(f"[DISCHARGE] npop={npop}")
         if (self.n_assem_spent - self.spent_fuel.count) < npop:
-            print("[DISCHARGE] not enough space for spent fuel, aborting discharge")
             return False
 
         ss = str(npop) + " assemblies"
@@ -603,8 +589,6 @@ class DepleteReactor(Facility):
                 tot_spent += mats.quantity
                 lib.record_time_series(
                     "supply" + self.fuel_outcommods[ii], self, tot_spent)
-
-        print(f"[DISCHARGE] Finished. core_count={self.core.count} | spent_fuel_count={self.spent_fuel.count}")
         return True
 
     def load(self):
@@ -618,9 +602,7 @@ class DepleteReactor(Facility):
         Record the number of assemblies that are to be loaded, then move
         them from the fresh fuel inventory to the core inventory.
         '''
-        print(f"[LOAD] fresh_fuel_count={self.fresh_fuel.count} | core_count={self.core.count}")
         n = min((self.n_assem_core - self.core.count), self.fresh_fuel.count)
-        print(f"[LOAD] loading {n} assemblies")
 
         if n == 0:
             return
@@ -643,31 +625,24 @@ class DepleteReactor(Facility):
         by changing the recipe of the material to that of the
         fuel_outrecipes
         '''
-        print(f"[TRANSMUTE] starting transmute. time={self.context.time} | core_count={self.core.count}")
         assemblies = self.core.pop_n(self.core.count)
-        print(f"[TRANSMUTE] popped {len(assemblies)} assemblies from core.")
         self.core.push_many(assemblies)
-        print("[TRANSMUTE] after push")
         # ss = str(len(assemblies)) + " assemblies"
         # self.record("TRANSMUTE", ss)
         comp_list = [assembly.comp() for assembly in assemblies]
-        print("[Transmute] after comp_list")
         material_ids, materials = self.deplete.update_materials(
             comp_list, self.materials)
-        print("[TRANSMUTE] after material_ids")
         ind_op = od.IndependentOperator(
             materials,
             [np.array([self.flux])] * len(materials),
             [self.micro_xs] * len(materials),
             str(self.model_path + self.chain_file))
         ind_op.output_dir = self.model_path
-        print("[TRANSMUTE] after ind_op")
         integrator = od.PredictorIntegrator(ind_op,
                                             np.ones(int(self.cycle_time)
                                                     ) * self.context.dt,
                                             power=self.thermal_power * 1e6,
                                             timestep_units='s')
-        print("[TRANSMUTE] Running depletion..")
         integrator.integrate()
         spent_comps = self.deplete.get_spent_comps(
             material_ids)
@@ -675,7 +650,6 @@ class DepleteReactor(Facility):
             self.fresh_comps = np.append(self.fresh_comps, assembly.comp())
             self.spent_comps = np.append(self.spent_comps, spent_comp)
             assembly.transmute(spent_comp)
-        print(f"[TRANSMUTE] transmute done. core_count={self.core.count}")
         return
 
     def record(self, event, val):
